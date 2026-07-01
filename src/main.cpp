@@ -8,6 +8,13 @@ pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::MotorGroup leftMotors({ -5, 4,-3}, pros::MotorGearset::blue); // left motor group - ports 3 (reversed), 4, 5 (reversed)
 pros::MotorGroup rightMotors({ 6,-9, 7}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
 
+// mechanisms
+pros::Motor armMotor(8, pros::MotorGearset::green);   // random port + cartridge
+pros::Motor clawMotor(1, pros::MotorGearset::green);  // random port + cartridge
+
+bool clawIsOpen = false;
+bool xPressedLast = false;
+
 // Inertial Sensor on port 10
 pros::Imu imu(10);
 
@@ -79,6 +86,23 @@ lemlib::ExpoDriveCurve steerCurve(3, // joystick deadband out of 127
 // create the chassis
 lemlib::Chassis chassis(drivetrain, linearController, angularController, sensors, &throttleCurve, &steerCurve);
 
+// move arm to a target position (degrees)
+void armToPos(double position, int velocity = 100) {
+    armMotor.move_absolute(position, velocity);
+}
+
+// open claw
+void clawOpen() {
+    clawMotor.move_absolute(90, 100); // adjust 90 later
+    clawIsOpen = true;
+}
+
+// close claw
+void clawClose() {
+    clawMotor.move_absolute(0, 100); // adjust 0 later
+    clawIsOpen = false;
+}
+
 /**
  * Runs initialization code. This occurs as soon as the program is started.
  *
@@ -88,6 +112,9 @@ lemlib::Chassis chassis(drivetrain, linearController, angularController, sensors
 void initialize() {
     pros::lcd::initialize(); // initialize brain screen
     chassis.calibrate(); // calibrate sensors
+
+    armMotor.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    clawMotor.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 
     // the default rate is 50. however, if you need to change the rate, you
     // can do the following.
@@ -162,6 +189,9 @@ void example_autonomous() {
  * This is the function that actually runs during the autonomous period:
  */
 void autonomous() {
+    // set position to x:0, y:0, heading:0
+	chassis.setPose(0, 0, 0);
+    
     //Start your auto here! You can use the example autonomous routine, or write your own
 	
 
@@ -171,15 +201,34 @@ void autonomous() {
  * Runs in driver control
  */
 void opcontrol() {
-    // controller
-    // loop to continuously update motors
     while (true) {
-        // get joystick positions
         int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
         int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
-        // move the chassis with curvature drive
+
         chassis.arcade(leftY, rightX);
-        // delay to save resources
+
+        // arm controls
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
+            armMotor.move(127);   // arm up
+        } else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
+            armMotor.move(-127);  // arm down
+        } else {
+            armMotor.brake();
+        }
+
+        // claw toggle with X
+        bool xPressed = controller.get_digital(pros::E_CONTROLLER_DIGITAL_X);
+
+        if (xPressed && !xPressedLast) {
+            if (clawIsOpen) {
+                clawClose();
+            } else {
+                clawOpen();
+            }
+        }
+
+        xPressedLast = xPressed;
+
         pros::delay(10);
     }
 }
